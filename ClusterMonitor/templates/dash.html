@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>MongoDB集群监控系统</title>
+    <script src="/static/js/common_api.js"></script>
+    <script src="/static/js/echarts.min.js"></script>
+    <script src="/static/js/jquery-3.2.1.min.js"></script>
+
+    <script src="/static/js/bootstrap.min.js"></script>
+    <script src="/static/js/bootstrap-dialog.js"></script>
+
+    <link href="/static/css/bootstrap.min.css" rel="stylesheet">
+    <link href="/static/css/bootstrap-dialog.css" rel="stylesheet">
+    <link href="/static/css/bootstrap-theme.min.css" rel="stylesheet">
+
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <script type="text/javascript">
+        let is_inited = false;
+        const ip_list = [];
+
+        function refresh_overview(){
+            $.ajax(
+                "/basic_info", {
+                    "dataType": "json",
+                    "success": (data) => {
+                        try {
+                            if (!is_inited) {
+                                init_interface();
+                            }
+                        } catch (err) {
+                            console.error("Error while init interface.");
+                            console.error(err);
+                        }
+                        try {
+                            const table_data = data.map((data_unit) => {
+                                const core_num = data_unit.cpu.length;
+                                const sum_cpu = leave_point(data_unit.cpu.reduce((a, b) => (a + b)) / (core_num * 1.0), 100);
+                                const virtual_memory = format_bytes(data_unit.memory.virtual.used) + " / " + format_bytes(data_unit.memory.virtual.total);
+                                const swap_memory = format_bytes(data_unit.memory.swap.used) + " / " + format_bytes(data_unit.memory.swap.total);
+                                return {
+                                    "1.IP地址": data_unit["ip"],
+                                    "2.核心数量": core_num,
+                                    "3.CPU用量": sum_cpu + "%",
+                                    "4.内存用量": virtual_memory,
+                                    "5.交换内存用量": swap_memory,
+                                };
+
+                            });
+                            load_table("cluster_overview", table_data);
+                        } catch (err) {
+                            console.error(err);
+                        }
+                    },
+                    "complete": () => {
+                        refresh_overview();
+                    },
+                    "error": () => {
+                        console.error("Get data failed.");
+                    }
+                }
+            );
+        }
+
+        function refresh_cpu_usage(data){
+            if (is_inited){
+
+            }
+        }
+
+        function init_interface(data) {
+            const panel_module = $("#usage_module");
+            data.forEach(
+                (data_unit) => {
+                    const current_key = data_unit["ip"];
+                    // create div
+                    ip_list.push(current_key);
+                    // Init CPU chart
+
+                }
+            );
+            is_inited = true;
+        }
+
+        $(() => {//On document loaded
+            refresh_overview();
+        });
+
+
+    </script>
+</head>
+<body>
+<br><br>
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-md-12">
+            <div class="panel panel-default">
+                <div class="panel-heading">
+                    <h3 class="panel-title">
+                        集群概览
+                    </h3>
+                </div>
+                <div class="panel-body">
+                    <table class="table table-hover" id="cluster_overview">
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row" id="charts_container">
+        <div class="col-md-4" id="usage_module">
+            <div class="panel panel-default">
+                <div class="panel-heading">
+                    <h3 class="panel-title">
+                        CPU Usage Dynamics
+                    </h3>
+                </div>
+                <div class="panel-body">
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+</body>
+</html>
