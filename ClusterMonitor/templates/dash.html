@@ -18,16 +18,18 @@
 
     <script type="text/javascript">
         let is_inited = false;
-        const ip_list = [];
+        const data_container = {};
+        const max_data_size = 200;
+        const GBratio = 1024 * 1024 * 1024.0;
 
-        function refresh_overview(){
+        function refresh_overview() {
             $.ajax(
                 "/basic_info", {
                     "dataType": "json",
                     "success": (data) => {
                         try {
                             if (!is_inited) {
-                                init_interface();
+                                init_interface(data);
                             }
                         } catch (err) {
                             console.error("Error while init interface.");
@@ -39,8 +41,12 @@
                                 const sum_cpu = leave_point(data_unit.cpu.reduce((a, b) => (a + b)) / (core_num * 1.0), 100);
                                 const virtual_memory = format_bytes(data_unit.memory.virtual.used) + " / " + format_bytes(data_unit.memory.virtual.total);
                                 const swap_memory = format_bytes(data_unit.memory.swap.used) + " / " + format_bytes(data_unit.memory.swap.total);
+                                const ip = data_unit["ip"];
+                                refresh_usage(ip, "cpu", sum_cpu);
+                                refresh_usage(ip, "memory", data_unit.memory.virtual.used / GBratio);
+                                refresh_usage(ip, "swap", data_unit.memory.swap.used / GBratio);
                                 return {
-                                    "1.IP地址": data_unit["ip"],
+                                    "1.IP地址": ip,
                                     "2.核心数量": core_num,
                                     "3.CPU用量": sum_cpu + "%",
                                     "4.内存用量": virtual_memory,
@@ -63,24 +69,150 @@
             );
         }
 
-        function refresh_cpu_usage(data){
-            if (is_inited){
+        function refresh_usage(machine_key, type_key, data) {
+            if (is_inited) {
+                const lp_data = leave_point(data, 100);
+                const key = type_key + "_" + machine_key;
+                data_container[key]["data"].push(generate_data(lp_data));
+                if (data_container[key]["data"].length > max_data_size) {
+                    data_container[key]["data"].shift();
+                }
 
+                data_container[key]["chart"].setOption({
+                    series: [{
+                        data: data_container[key]["data"]
+                    }]
+                });
             }
         }
 
+        function generate_data(data) {
+            const now = new Date();
+            return {
+                name: now.toString(),
+                value: [now, data]
+            }
+        }
+
+
+        function create_linebox(chart_container, panel_template, machine_key, init_value, value_range_min, value_range_max, title, figure_prefix) {
+            const current_panel = panel_template.clone(true);
+            const dom_chart = current_panel.find("#panel_body").get(0);
+            current_panel.find("#panel_title").html(title);
+            chart_container.append(current_panel);
+            const current_chart = echarts.init(dom_chart);
+            const data_container_key = figure_prefix + "_" + machine_key;
+            data_container[data_container_key] = {
+                "title": title,
+                "data": [generate_data(init_value)],
+                "chart": current_chart
+            };
+
+            const chart_option = {
+                tooltip: {
+                    trigger: 'axis',
+                    formatter: function (params) {
+                        params = params[0];
+                        return params.value[0] + ' --> ' + params.value[1];
+                    },
+                    axisPointer: {
+                        animation: false
+                    }
+                },
+                xAxis: {
+                    type: 'time',
+                    splitLine: {
+                        show: false
+                    }
+                },
+                yAxis: {
+                    type: 'value',
+                    boundaryGap: [0, '100%'],
+                    min: value_range_min,
+                    max: value_range_max,
+                    splitLine: {
+                        show: false
+                    }
+                },
+                series: [{
+                    name: 'Data',
+                    type: 'line',
+                    showSymbol: false,
+                    hoverAnimation: false,
+                    smooth: true, //是否平滑曲线显示
+                    areaStyle: { //区域填充样式
+                        normal: {
+                            color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [{ //填充的颜色。
+                                offset: 0, // 0% 处的颜色
+                                color: 'rgba(137, 189, 27, 0.3)'
+                            }, {
+                                offset: 0.8, // 80% 处的颜色
+                                color: 'rgba(137, 189, 27, 0)'
+                            }], false),
+                            shadowColor: 'rgba(0, 0, 0, 0.1)', //阴影颜色。支持的格式同color
+                            shadowBlur: 10 //图形阴影的模糊大小。该属性配合 shadowColor,shadowOffsetX, shadowOffsetY 一起设置图形的阴影效果
+                        }
+                    },
+                    lineStyle: { //线条样式
+                        normal: {
+                            width: 1 //线宽。[ default: 2 ]
+                        }
+                    },
+                    itemStyle: { //折线拐点标志的样式
+                        normal: {
+                            color: 'rgb(137,189,27)',
+                            borderColor: 'rgba(137,189,2,0.27)', //图形的描边颜色。支持的格式同 color
+                            borderWidth: 12 //描边线宽。为 0 时无描边。[ default: 0 ]
+
+                        }
+                    },
+                    data: data_container[data_container_key]["data"]
+                }]
+            };
+            current_chart.setOption(chart_option);
+        }
+
+
         function init_interface(data) {
-            const panel_module = $("#usage_module");
+            const panel_template = $("#usage_module").clone(true);
+            const charts_container = $("#charts_container");
+            charts_container.empty();
             data.forEach(
                 (data_unit) => {
-                    const current_key = data_unit["ip"];
-                    // create div
-                    ip_list.push(current_key);
-                    // Init CPU chart
+                    const machine_key = data_unit["ip"];
+                    const core_num = data_unit["cpu"].length;
+                    const cpu_usage = leave_point(data_unit.cpu.reduce((a, b) => (a + b)) / (core_num * 1.0), 100);
 
+                    create_linebox(
+                        charts_container,
+                        panel_template,
+                        machine_key,
+                        cpu_usage, 0, 100,
+                        machine_key + " CPU使用率",
+                        "cpu"
+                    );
+
+                    create_linebox(
+                        charts_container,
+                        panel_template,
+                        machine_key,
+                        leave_point(data_unit["memory"]["virtual"]["used"] / GBratio, 100), 0,
+                        leave_point(data_unit["memory"]["virtual"]["total"] / GBratio, 100),
+                        machine_key + " 内存使用(GB)", "memory"
+                    );
+
+                    create_linebox(
+                        charts_container,
+                        panel_template,
+                        machine_key,
+                        leave_point(data_unit["memory"]["swap"]["used"] / GBratio, 100), 0,
+                        leave_point(data_unit["memory"]["swap"]["total"] / GBratio, 100),
+                        machine_key + " 交换使用(GB)", "swap"
+                    );
                 }
             );
             is_inited = true;
+            console.log("Initialized normally.")
         }
 
         $(() => {//On document loaded
@@ -113,11 +245,11 @@
         <div class="col-md-4" id="usage_module">
             <div class="panel panel-default">
                 <div class="panel-heading">
-                    <h3 class="panel-title">
+                    <h3 class="panel-title" id="panel_title">
                         CPU Usage Dynamics
                     </h3>
                 </div>
-                <div class="panel-body">
+                <div class="panel-body" id="panel_body" style="height:400px;">
                 </div>
             </div>
         </div>

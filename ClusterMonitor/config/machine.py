@@ -1,5 +1,6 @@
-machine_list = {
-    "m1": {
+"""
+R.I.P.
+"m1": {
         "ip": "172.16.9.81",
         "port": 22,
         "user": "root",
@@ -9,6 +10,9 @@ machine_list = {
             "passwd": "979323846"
         }
     },
+"""
+machine_list = {
+
     "m2": {
         "ip": "172.16.9.86",
         "port": 22,
